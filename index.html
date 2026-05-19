@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JEE Dropper Dashboard</title>
+<script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-database-compat.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -384,22 +386,26 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   <!-- FRIENDS -->
   <div id="page-friends" class="tab-content">
     <div class="section-title">&#x1F465; Friend Progression</div>
+    <div class="friend-code-bar" style="display:flex;gap:12px;align-items:center;margin-bottom:18px;flex-wrap:wrap;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:12px">
+      <span class="text-xs" style="color:var(--text2)">&#x1F511; Your Code:</span>
+      <span style="font-weight:800;font-size:18px;letter-spacing:3px;color:var(--accent);font-family:monospace" id="myCodeDisplay">------</span>
+      <button class="btn btn-outline" style="padding:4px 12px;font-size:11px" onclick="copyMyCode()">&#x1F4CB; Copy</button>
+      <span style="flex:1"></span>
+      <span class="text-xs" style="color:var(--text2)">&#x1F50D; Watch Friend:</span>
+      <input type="text" id="friendCodeInput" placeholder="Enter friend code" maxlength="10" style="width:110px;padding:6px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:monospace;text-transform:uppercase;outline:none;letter-spacing:2px">
+      <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" onclick="startWatching()">&#x1F465; Watch</button>
+      <button class="btn btn-outline" style="padding:6px 12px;font-size:11px" onclick="stopWatching()">&#x1F5D1; Stop</button>
+    </div>
     <div class="friends-grid">
       <div class="friend-card">
         <h3>&#x1F464; <span id="myNameDisplay">Me</span></h3>
+        <div class="friend-badge" style="font-size:10px;color:var(--success);margin:-8px 0 12px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block"></span> Live sync enabled</div>
         <div id="myProgress"></div>
-        <div class="friend-actions">
-          <button class="btn btn-primary" onclick="exportMyData()">&#x1F4E4; Export My Data</button>
-          <button class="btn btn-outline" onclick="importFriendData()">&#x1F4E5; Import Friend</button>
-        </div>
       </div>
       <div class="friend-card">
         <h3>&#x1F465; <span id="friendNameDisplay">Friend</span></h3>
         <div id="friendProgress">
-          <div class="empty-state">Import a friend's data to see their progression side by side.<br><br>
-            <button class="btn btn-outline" onclick="importFriendData()">&#x1F4E5; Import Friend Data</button>
-            <button class="btn btn-outline" onclick="clearFriendData()" style="margin-left:8px">&#x1F5D1; Clear</button>
-          </div>
+          <div class="empty-state" id="friendEmptyState">Enter a friend's code above to watch their progress in real-time.</div>
         </div>
       </div>
     </div>
@@ -465,6 +471,84 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 </div>
 
 <script>
+// ===== FIREBASE =====
+firebase.initializeApp({
+  apiKey:"AIzaSyA8lqEFfEizQtD6TkmR8viH19dpmlcoFXk",
+  authDomain:"dropper-dashboard.firebaseapp.com",
+  databaseURL:"https://dropper-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"dropper-dashboard",
+  storageBucket:"dropper-dashboard.firebasestorage.app",
+  messagingSenderId:"29659707607",
+  appId:"1:29659707607:web:7fd2a04c0a59f2079a9892"
+});
+const fbDb = firebase.database();
+
+function getMyCode(){
+  let c = localStorage.getItem('jee_dropper_code');
+  if(!c){ c = Math.random().toString(36).substring(2,7).toUpperCase(); localStorage.setItem('jee_dropper_code',c); }
+  return c;
+}
+const MY_CODE = getMyCode();
+let remoteUpdateId = 0;
+let fbListener = null;
+let friendFbListener = null;
+
+function saveStateToFb(){
+  fbDb.ref('users/' + MY_CODE).update({
+    config: state.config,
+    completed: state.completed,
+    syllTracker: state.syllTracker,
+    calendar: state.calendar,
+    lastUpdated: firebase.database.ServerValue.TIMESTAMP,
+    updateId: ++remoteUpdateId,
+    profileName: state.config.profileName || 'Me'
+  });
+}
+
+function listenMyData(){
+  if(fbListener) fbListener.off();
+  fbListener = fbDb.ref('users/' + MY_CODE);
+  fbListener.on('value', snap => {
+    const d = snap.val();
+    if(!d) return;
+    if(d.updateId !== undefined && d.updateId <= remoteUpdateId) return;
+    if(d.config) Object.assign(state.config, d.config);
+    if(d.completed) Object.assign(state.completed, d.completed);
+    if(d.syllTracker) Object.assign(state.syllTracker, d.syllTracker);
+    if(d.calendar) Object.assign(state.calendar, d.calendar);
+    if(d.updateId) remoteUpdateId = d.updateId;
+    saveStateLocal();
+    renderAll();
+  });
+}
+
+function watchFriendFb(code){
+  if(friendFbListener){ friendFbListener.off(); friendFbListener = null; }
+  if(!code){ friendData = null; saveFriend(); renderFriends(); return; }
+  friendFbListener = fbDb.ref('users/' + code.toUpperCase());
+  friendFbListener.on('value', snap => {
+    const d = snap.val();
+    if(!d){ friendData = null; saveFriend(); renderFriends(); return; }
+    const allChs = SUBJECTS.flatMap(s => getAllChapters(s));
+    let done = 0, started = 0;
+    const ts = d.syllTracker?.status || {};
+    for(const ch of allChs){
+      const st = ts[ch.id] || 'not-started';
+      if(st !== 'not-started') started++;
+      if(st === 'completed' || st === 'mastered') done++;
+    }
+    const total = allChs.length;
+    friendData = {
+      name: d.profileName || 'Friend',
+      syllStats: {pct: total>0?Math.round(done/total*100):0, done, tot:total, started, total},
+      exportedAt: new Date().toLocaleString(),
+      trackerStatus: ts
+    };
+    saveFriend();
+    renderFriends();
+  });
+}
+
 // ===== DATA =====
 const SUBJECTS = ['Physics','Physical Chemistry','Maths','Organic Chemistry','Inorganic Chemistry'];
 const SUBJ_COLORS = {Physics:'#3B82F6','Physical Chemistry':'#10B981',Maths:'#F59E0B','Organic Chemistry':'#EF4444','Inorganic Chemistry':'#8B5CF6'};
@@ -556,7 +640,8 @@ function loadState(){
   try { const fr = localStorage.getItem('jee_dropper_friend'); if(fr) friendData = JSON.parse(fr); } catch(e){}
   try { const as = localStorage.getItem('jee_dropper_active_subj'); if(as) activeSubj = as; } catch(e){}
 }
-function saveState(){ localStorage.setItem('jee_dropper_state', JSON.stringify({config:state.config,completed:state.completed,syllabus:state.syllabus,calendar:state.calendar,syllTracker:state.syllTracker})); }
+function saveStateLocal(){ localStorage.setItem('jee_dropper_state', JSON.stringify({config:state.config,completed:state.completed,syllabus:state.syllabus,calendar:state.calendar,syllTracker:state.syllTracker})); }
+function saveState(){ saveStateLocal(); saveStateToFb(); }
 function saveFriend(){ localStorage.setItem('jee_dropper_friend', friendData ? JSON.stringify(friendData) : ''); }
 function saveActiveSubj(){ localStorage.setItem('jee_dropper_active_subj', activeSubj); }
 
@@ -846,8 +931,17 @@ function onSyllSearch(){ renderSyllabus(); }
 
 // ===== FRIENDS =====
 function renderFriends(){
+  document.getElementById('myCodeDisplay').textContent = MY_CODE;
+
   const myName = state.config.profileName || 'Me';
   document.getElementById('myNameDisplay').textContent = myName;
+
+  // Restore friend code input from saved
+  const savedCode = localStorage.getItem('jee_dropper_watch_code');
+  if(savedCode && !document.getElementById('friendCodeInput').value){
+    document.getElementById('friendCodeInput').value = savedCode;
+    watchFriendFb(savedCode);
+  }
 
   const syllStats = getSyllabusStats();
   const todayPct = getTodayCompletion();
@@ -860,20 +954,42 @@ function renderFriends(){
     const f = friendData;
     document.getElementById('friendNameDisplay').textContent = f.name || 'Friend';
     document.getElementById('friendProgress').innerHTML =
+      '<div class="friend-badge" style="font-size:10px;color:var(--success);margin:-4px 0 12px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block"></span> Live</div>' +
       '<div class="friend-stat"><div class="f-label">Syllabus Progress</div><div class="f-val">' + (f.syllStats.pct||0) + '%</div><div class="f-bar"><div class="f-bar-in" style="width:' + (f.syllStats.pct||0) + '%;background:var(--success)"></div></div></div>' +
       '<div class="friend-stat"><div class="f-label">Chapters Started</div><div class="f-val">' + (f.syllStats.started||0) + ' / ' + (f.syllStats.total||1) + '</div><div class="f-bar"><div class="f-bar-in" style="width:' + (f.syllStats.total>0?(f.syllStats.started||0)/f.syllStats.total*100:0) + '%;background:var(--accent)"></div></div></div>' +
-      '<div class="friend-stat"><div class="f-label">Data exported</div><div class="f-val" style="font-size:14px;color:var(--text2)">' + (f.exportedAt||'Unknown') + '</div></div>' +
-      '<div class="friend-actions"><button class="btn btn-outline" onclick="clearFriendData()">&#x1F5D1; Remove Friend</button></div>';
+      '<div class="friend-stat"><div class="f-label">Last updated</div><div class="f-val" style="font-size:14px;color:var(--text2)">' + (f.exportedAt||'Just now') + '</div></div>';
     document.getElementById('comparisonCard').style.display = 'block';
     renderComparison();
   } else {
     document.getElementById('friendNameDisplay').textContent = 'Friend';
-    document.getElementById('friendProgress').innerHTML =
-      '<div class="empty-state">Import a friend\'s exported JSON file to see their progression side by side.<br><br>' +
-      '<button class="btn btn-outline" onclick="importFriendData()">&#x1F4E5; Import Friend Data</button></div>';
+    document.getElementById('friendProgress').innerHTML = '<div class="empty-state">Enter a friend\'s code above to watch their progress in real-time.</div>';
     document.getElementById('comparisonCard').style.display = 'none';
   }
 }
+
+function copyMyCode(){
+  navigator.clipboard.writeText(MY_CODE).then(() => {
+    const btn = document.querySelector('.friend-code-bar .btn-outline');
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  }).catch(() => alert('Your code: ' + MY_CODE));
+}
+
+function startWatching(){
+  const code = document.getElementById('friendCodeInput').value.trim().toUpperCase();
+  if(!code) return;
+  localStorage.setItem('jee_dropper_watch_code', code);
+  watchFriendFb(code);
+}
+
+function stopWatching(){
+  document.getElementById('friendCodeInput').value = '';
+  localStorage.removeItem('jee_dropper_watch_code');
+  watchFriendFb(null);
+}
+
+function clearFriendData(){ stopWatching(); }
 
 function getSyllabusStats(){
   let allChs = [];
@@ -916,29 +1032,6 @@ function exportMyData(){
   document.body.removeChild(a);
   URL.revokeObjectURL(a.href);
 }
-
-function importFriendData(){
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  input.onchange = function(e){
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(ev){
-      try {
-        friendData = JSON.parse(ev.target.result);
-        if(!friendData.syllStats) { alert('Invalid format: missing syllabus stats'); return; }
-        saveFriend();
-        renderFriends();
-      } catch(ex){ alert('Invalid JSON file'); }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
-}
-
-function clearFriendData(){ friendData = null; saveFriend(); renderFriends(); }
 
 function renderComparison(){
   const me = getSyllabusStats();
@@ -1285,6 +1378,7 @@ function renderAll(){
 }
 
 loadState();
+listenMyData();
 
 // Filter toggles delegation
 document.querySelectorAll('.syll-toggle-group').forEach(g => {
