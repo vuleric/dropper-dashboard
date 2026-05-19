@@ -1277,37 +1277,39 @@ document.addEventListener('click', function(e){
     pickerEl.remove(); pickerEl = null;
   }
 
-  // Subject name click in edit mode
-  const subjEl = e.target.closest('.edit-mode-active .tt-cell .subj-name');
-  if(subjEl && state.editMode){
-    e.stopPropagation();
-    const cell = subjEl.closest('.tt-cell');
-    const dateStr = cell.dataset.date;
-    const slotIdx = parseInt(cell.dataset.slot);
-    const currentSubj = cell.dataset.subj;
-    showSubjectPicker(e.clientX, e.clientY, dateStr, slotIdx, currentSubj);
-    return;
-  }
-
-  // Time/sleep/nap column click in edit mode
-  const timeEl = e.target.closest('.edit-mode-active .tt .tt-row .tt-cell:first-child');
-  if(timeEl && state.editMode && !e.target.closest('.subject-picker') && !e.target.closest('.time-editor')){
-    e.stopPropagation();
-    const editType = timeEl.dataset.edit || '';
-    const slotVal = timeEl.dataset.slot;
-
-    if(editType === 'sleep' || editType === 'nap'){
-      openSettings();
+  if(state.editMode){
+    // Subject name click in edit mode
+    const subjEl = e.target.closest('.tt-cell .subj-name');
+    if(subjEl){
+      e.stopPropagation();
+      const cell = subjEl.closest('.tt-cell');
+      const dateStr = cell.dataset.date;
+      const slotIdx = parseInt(cell.dataset.slot);
+      const currentSubj = cell.dataset.subj;
+      showSubjectPicker(e.clientX, e.clientY, dateStr, slotIdx, currentSubj);
       return;
     }
 
-    if(slotVal !== undefined){
-      const slotIdx = parseInt(slotVal);
-      if(slotIdx >= 0 && slotIdx < countSlots()){
-        showTimeEditor(e.clientX, e.clientY, slotIdx);
+    // Time/sleep/nap column click in edit mode
+    const timeEl = e.target.closest('.tt .tt-row .tt-cell:first-child');
+    if(timeEl && !e.target.closest('.subject-picker') && !e.target.closest('.time-editor')){
+      e.stopPropagation();
+      const editType = timeEl.dataset.edit || '';
+      const slotVal = timeEl.dataset.slot;
+
+      if(editType === 'sleep' || editType === 'nap'){
+        openSettings();
+        return;
       }
+
+      if(slotVal !== undefined){
+        const slotIdx = parseInt(slotVal);
+        if(slotIdx >= 0 && slotIdx < countSlots()){
+          showTimeEditor(e.clientX, e.clientY, slotIdx);
+        }
+      }
+      return;
     }
-    return;
   }
 });
 
