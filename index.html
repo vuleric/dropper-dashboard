@@ -45,6 +45,18 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 /* Performance */
 .perf-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
 @media(max-width:600px){.perf-grid{grid-template-columns:1fr}}
+.time-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;font-size:13px}
+.time-bar .tb-clock{font-family:monospace;font-size:22px;font-weight:700;color:var(--accent);letter-spacing:1px}
+.time-bar .tb-sep{color:var(--border);font-size:18px}
+.time-bar .tb-activity{color:var(--text2);font-size:13px;flex:1}
+.time-bar .tb-alarm-btn{background:none;border:1px solid var(--border);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--text2)}
+.time-bar .tb-alarm-btn:hover{border-color:var(--accent);color:var(--accent)}
+.time-bar .tb-alarm-btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.stopwatch-card{text-align:center;padding:16px;margin-bottom:14px}
+.stopwatch-card .sw-header{font-size:12px;color:var(--text2);margin-bottom:6px}
+.stopwatch-card .sw-display{font-family:monospace;font-size:36px;font-weight:700;color:var(--accent);letter-spacing:2px;margin-bottom:12px}
+.stopwatch-card .sw-btns{display:flex;gap:10px;justify-content:center}
+.stopwatch-card .sw-btns .btn{padding:8px 20px;font-size:13px}
 .perf-card{padding:18px;border-radius:12px;background:linear-gradient(135deg,var(--surface),var(--card));border:1px solid var(--border);position:relative;overflow:hidden}
 .perf-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));opacity:0.6}
 .perf-label{font-size:11px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600}
@@ -331,6 +343,13 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       </div>
     </div>
 
+    <div class="time-bar" id="timeBar">
+      <span class="tb-clock" id="liveClock">00:00:00</span>
+      <span class="tb-sep">|</span>
+      <span class="tb-activity" id="currentActivity">--</span>
+      <button class="tb-alarm-btn" id="alarmPermBtn" onclick="requestAlarmPermission()" title="Enable alarm notifications">&#x1F514;</button>
+    </div>
+
     <div class="perf-grid" id="perfGrid">
       <div class="perf-card">
         <div class="perf-label">Today's Progress</div>
@@ -344,6 +363,16 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
         <div class="perf-value" id="weekAvg">0%</div>
         <div class="perf-sub" id="weekTotal">vs 100% perfect</div>
         <div class="weekly-chart" id="weekChart"></div>
+      </div>
+    </div>
+
+    <div class="card stopwatch-card">
+      <div class="sw-header">&#x23F1; Stopwatch</div>
+      <div class="sw-display" id="stopwatchDisplay">00:00:00</div>
+      <div class="sw-btns">
+        <button class="btn btn-primary" onclick="stopwatchStart()" id="swStartBtn">&#x25B6; Start</button>
+        <button class="btn btn-outline" onclick="stopwatchPause()" id="swPauseBtn" style="display:none">&#x23F8; Pause</button>
+        <button class="btn btn-outline" onclick="stopwatchReset()" id="swResetBtn">&#x1F504; Reset</button>
       </div>
     </div>
 
@@ -850,6 +879,158 @@ function toggleCheck(el){
   el.classList.toggle('done', state.completed[key]);
   saveState();
   renderPerformance();
+}
+
+// ===== LIVE CLOCK & ALARMS =====
+let alarmFired = new Set();
+let alarmPermission = Notification.permission === 'granted';
+
+function startLiveClock(){
+  setInterval(function(){
+    const now = new Date();
+    document.getElementById('liveClock').textContent =
+      String(now.getHours()).padStart(2,'0') + ':' +
+      String(now.getMinutes()).padStart(2,'0') + ':' +
+      String(now.getSeconds()).padStart(2,'0');
+    updateCurrentActivity();
+  }, 1000);
+  startAlarmChecker();
+}
+
+function startAlarmChecker(){
+  setInterval(function(){
+    if(scheduleView === 'friend') return;
+    const now = new Date();
+    const todayStr = fmtDate(now);
+    const config = state.config;
+    const slots = config.slots;
+    const hm = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    const numStudy = countSlots() - 1;
+    const todayDay = now.getDay();
+    const dayIdx = todayDay === 0 ? 6 : todayDay - 1;
+    const rot = getRotationForDay(dayIdx, numStudy);
+    for(let s=0; s<slots.length; s++){
+      const sl = slots[s];
+      const isRev = s === slots.length - 1;
+      const subj = isRev ? 'Revision' : (config[todayStr+'_slot'+s] || rot[s] || 'Revision');
+      if(hm === sl.start && !alarmFired.has(todayStr+'_'+s+'_start')){
+        alarmFired.add(todayStr+'_'+s+'_start');
+        showAlarmNotification(subj + ' starts now!', sl.start + ' - ' + sl.end);
+      }
+      if(hm === sl.end && !alarmFired.has(todayStr+'_'+s+'_end')){
+        alarmFired.add(todayStr+'_'+s+'_end');
+        const nextLabel = isRev ? 'Free time' : 'Nap time';
+        showAlarmNotification(subj + ' ended', 'Time for ' + nextLabel);
+      }
+    }
+  }, 10000);
+}
+
+function updateCurrentActivity(){
+  const el = document.getElementById('currentActivity');
+  const now = new Date();
+  const todayStr = fmtDate(now);
+  const config = state.config;
+  const slots = config.slots;
+  const hm = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const numStudy = countSlots() - 1;
+  const dayIdx = (now.getDay() === 0) ? 6 : now.getDay() - 1;
+  const rot = getRotationForDay(dayIdx, numStudy);
+  for(let s=0; s<slots.length; s++){
+    const sl = slots[s];
+    const isRev = s === slots.length - 1;
+    if(hm >= sl.start && hm < sl.end){
+      const subj = isRev ? 'Revision' : (config[todayStr+'_slot'+s] || rot[s] || 'Revision');
+      el.textContent = '\u{1F4CD} ' + subj + ' (' + sl.start + '-' + sl.end + ')';
+      el.style.color = 'var(--success)';
+      return;
+    }
+  }
+  // Check if in sleep (handle overnight range)
+  const sleepStart = config.sleepStart;
+  const sleepEnd = config.sleepEnd;
+  const inSleep = sleepStart < sleepEnd
+    ? (hm >= sleepStart && hm < sleepEnd)
+    : (hm >= sleepStart || hm < sleepEnd);
+  if(inSleep){
+    el.textContent = '\u{1F634} Sleep time';
+    el.style.color = 'var(--text2)';
+    return;
+  }
+  // Check nap times (after each non-revision slot)
+  for(let s=0; s<slots.length-1; s++){
+    const sl = slots[s];
+    if(hm >= sl.end){
+      const napStart = sl.end;
+      const napEndMin = addMinutes(sl.end, config.napDuration);
+      if(hm < napEndMin){
+        el.textContent = '\u{1F634} Nap break';
+        el.style.color = 'var(--warn)';
+        return;
+      }
+    }
+  }
+  el.textContent = '\u{23F3} Waiting for next session';
+  el.style.color = 'var(--text2)';
+}
+function addMinutes(time, mins){
+  const [h,m] = time.split(':').map(Number);
+  const d = new Date(); d.setHours(h,m+mins,0,0);
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function requestAlarmPermission(){
+  if(!('Notification' in window)){ alert('Notifications not supported'); return; }
+  Notification.requestPermission().then(function(p){
+    alarmPermission = p === 'granted';
+    document.getElementById('alarmPermBtn').classList.toggle('on', alarmPermission);
+  });
+}
+function showAlarmNotification(title, body){
+  if(alarmPermission){
+    try { new Notification(title, {body:body, icon:'https://dropper-dashboard-gray.vercel.app/favicon.ico'}); } catch(e){}
+  }
+}
+
+// ===== STOPWATCH =====
+let stopwatchRunning = false;
+let stopwatchInterval = null;
+let stopwatchStartTime = 0;
+let stopwatchElapsed = 0;
+
+function stopwatchStart(){
+  if(stopwatchRunning) return;
+  stopwatchRunning = true;
+  stopwatchStartTime = Date.now() - stopwatchElapsed;
+  document.getElementById('swStartBtn').style.display = 'none';
+  document.getElementById('swPauseBtn').style.display = '';
+  if(stopwatchInterval) clearInterval(stopwatchInterval);
+  stopwatchInterval = setInterval(function(){
+    stopwatchElapsed = Date.now() - stopwatchStartTime;
+    updateStopwatchDisplay();
+  }, 100);
+}
+function stopwatchPause(){
+  stopwatchRunning = false;
+  if(stopwatchInterval){ clearInterval(stopwatchInterval); stopwatchInterval = null; }
+  document.getElementById('swStartBtn').style.display = '';
+  document.getElementById('swPauseBtn').style.display = 'none';
+}
+function stopwatchReset(){
+  stopwatchRunning = false;
+  if(stopwatchInterval){ clearInterval(stopwatchInterval); stopwatchInterval = null; }
+  stopwatchElapsed = 0;
+  document.getElementById('swStartBtn').style.display = '';
+  document.getElementById('swPauseBtn').style.display = 'none';
+  updateStopwatchDisplay();
+}
+function updateStopwatchDisplay(){
+  const totalMs = stopwatchElapsed;
+  const h = Math.floor(totalMs / 3600000);
+  const m = Math.floor((totalMs % 3600000) / 60000);
+  const s = Math.floor((totalMs % 60000) / 1000);
+  document.getElementById('stopwatchDisplay').textContent =
+    String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
 }
 
 function countSlots(cfg){ return (cfg||state.config).slots.length; }
@@ -1543,7 +1724,11 @@ if(state.editMode){
   document.getElementById('editToggle').classList.add('on');
   document.body.classList.add('edit-mode-active');
 }
-
+if('Notification' in window && Notification.permission === 'granted'){
+  alarmPermission = true;
+  document.getElementById('alarmPermBtn').classList.add('on');
+}
+startLiveClock();
 renderAll();
 </script>
 </body>
