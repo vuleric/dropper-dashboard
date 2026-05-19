@@ -46,15 +46,12 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .perf-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
 @media(max-width:600px){.perf-grid{grid-template-columns:1fr}}
 .time-bar{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;font-size:13px}
-.clock-face{display:flex;align-items:center;justify-content:center;width:56px;height:56px}
-.analog-clock{position:relative;width:48px;height:48px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1a1a1a,#0a0a0a);border:2px solid #2a2a2a;box-shadow:0 0 10px rgba(0,0,0,0.5),inset 0 0 8px rgba(0,0,0,0.6)}
-.ac-tick{position:absolute;top:3px;left:50%;width:2px;height:5px;margin-left:-1px;background:#555;transform-origin:50% 21px;border-radius:1px}
-.ac-tick:nth-child(1),.ac-tick:nth-child(4),.ac-tick:nth-child(7),.ac-tick:nth-child(10){background:#999;height:8px;top:1px;transform-origin:50% 23px;width:3px;margin-left:-1.5px}
-.ac-hand{position:absolute;bottom:50%;left:50%;transform-origin:50% 100%;border-radius:2px;transition:transform 0.2s cubic-bezier(0.4,2.08,0.55,0.44)}
-.ac-hour{width:3px;height:11px;margin-left:-1.5px;background:#ddd;z-index:3;border-radius:2px 2px 1px 1px}
-.ac-minute{width:2px;height:15px;margin-left:-1px;background:#ccc;z-index:4}
-.ac-second{width:1px;height:17px;margin-left:-0.5px;background:#ff4444;z-index:5;transition:transform 0.1s linear}
-.ac-center{position:absolute;width:4px;height:4px;border-radius:50%;background:#ff4444;top:50%;left:50%;margin:-2px;z-index:6;box-shadow:0 0 4px rgba(255,68,68,0.6)}
+.clock-face{display:flex;align-items:center;gap:0;background:#0a0a0a;border-radius:10px;padding:6px 14px 6px 16px;border:2px solid #2a2a2a;box-shadow:inset 0 0 12px rgba(0,0,0,0.8),0 2px 8px rgba(0,0,0,0.3);position:relative}
+.clock-face::after{content:'';position:absolute;inset:0;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.03) 0%,transparent 50%,rgba(0,0,0,0.2) 100%);pointer-events:none}
+.clock-digits{font-family:'Orbitron',monospace;font-size:28px;font-weight:700;color:#ff4444;text-shadow:0 0 6px rgba(255,68,68,0.6),0 0 20px rgba(255,68,68,0.2);letter-spacing:2px;line-height:1;position:relative;z-index:1}
+.colon{animation:blink-colon 1s steps(1) infinite}
+@keyframes blink-colon{0%,100%{opacity:1}50%{opacity:0}}
+.clock-seconds{font-family:'Orbitron',monospace;font-size:16px;font-weight:600;color:#ff6666;text-shadow:0 0 4px rgba(255,68,68,0.4);margin-left:4px;opacity:0.8;line-height:1;position:relative;z-index:1}
 .time-bar .tb-sep{color:var(--border);font-size:18px}
 .time-bar .tb-activity{color:var(--text2);font-size:13px;flex:1}
 .time-bar .tb-alarm-btn{background:none;border:1px solid var(--border);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--text2);transition:all 0.2s}
@@ -353,25 +350,9 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     </div>
 
     <div class="time-bar" id="timeBar">
-      <div class="clock-face" id="clockFace">
-        <div class="analog-clock" id="analogClock">
-          <div class="ac-tick" style="transform:rotate(0deg)"></div>
-          <div class="ac-tick" style="transform:rotate(30deg)"></div>
-          <div class="ac-tick" style="transform:rotate(60deg)"></div>
-          <div class="ac-tick" style="transform:rotate(90deg)"></div>
-          <div class="ac-tick" style="transform:rotate(120deg)"></div>
-          <div class="ac-tick" style="transform:rotate(150deg)"></div>
-          <div class="ac-tick" style="transform:rotate(180deg)"></div>
-          <div class="ac-tick" style="transform:rotate(210deg)"></div>
-          <div class="ac-tick" style="transform:rotate(240deg)"></div>
-          <div class="ac-tick" style="transform:rotate(270deg)"></div>
-          <div class="ac-tick" style="transform:rotate(300deg)"></div>
-          <div class="ac-tick" style="transform:rotate(330deg)"></div>
-          <div class="ac-hand ac-hour" id="acHourHand"></div>
-          <div class="ac-hand ac-minute" id="acMinuteHand"></div>
-          <div class="ac-hand ac-second" id="acSecondHand"></div>
-          <div class="ac-center"></div>
-        </div>
+      <div class="clock-face">
+        <span class="clock-digits" id="liveClock">00<span class="colon">:</span>00</span>
+        <span class="clock-seconds" id="liveSeconds">00</span>
       </div>
       <span class="tb-sep">|</span>
       <span class="tb-activity" id="currentActivity">--</span>
@@ -916,10 +897,15 @@ let alarmPermission = Notification.permission === 'granted';
 function startLiveClock(){
   setInterval(function(){
     const now = new Date();
-    var h = now.getHours(), m = now.getMinutes(), s = now.getSeconds(), ms = now.getMilliseconds();
-    document.getElementById('acHourHand').style.transform = 'rotate(' + ((h%12)*30 + m*0.5 + s/120) + 'deg)';
-    document.getElementById('acMinuteHand').style.transform = 'rotate(' + (m*6 + s*0.1) + 'deg)';
-    document.getElementById('acSecondHand').style.transform = 'rotate(' + ((s + ms/1000)*6) + 'deg)';
+    var clockEl = document.getElementById('liveClock');
+    var colonSpan = clockEl.querySelector('.colon');
+    if(colonSpan){
+      colonSpan.previousSibling.nodeValue = String(now.getHours()).padStart(2,'0');
+      colonSpan.nextSibling.nodeValue = String(now.getMinutes()).padStart(2,'0');
+    } else {
+      clockEl.textContent = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    }
+    document.getElementById('liveSeconds').textContent = String(now.getSeconds()).padStart(2,'0');
     updateCurrentActivity();
   }, 1000);
   startAlarmChecker();
