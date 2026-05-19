@@ -527,6 +527,18 @@ function listenMyData(){
   });
 }
 
+function computeTodayPctFrom(config, completed){
+  const todayStr = fmtDate(new Date());
+  const slots = config?.slots || [];
+  let tot = 0, done = 0;
+  for(let s = 0; s < slots.length; s++){
+    const isRev = s === slots.length - 1;
+    if(isRev){ const k = todayStr + '_' + s + '_R'; tot++; if(completed?.[k]) done++; }
+    else { for(const i of ITEMS_SLOT){ const k = todayStr + '_' + s + '_' + i; tot++; if(completed?.[k]) done++; } }
+  }
+  return tot > 0 ? Math.round(done/tot*100) : 0;
+}
+
 function watchFriendFb(code){
   if(friendFbListener){ friendFbListener.off(); friendFbListener = null; }
   if(!code){ friendData = null; saveFriend(); renderFriends(); return; }
@@ -543,11 +555,15 @@ function watchFriendFb(code){
       if(st === 'completed' || st === 'mastered') done++;
     }
     const total = allChs.length;
+    const todayPct = computeTodayPctFrom(d.config, d.completed);
     friendData = {
       name: d.profileName || 'Friend',
       syllStats: {pct: total>0?Math.round(done/total*100):0, done, tot:total, started, total},
       exportedAt: new Date().toLocaleString(),
-      trackerStatus: ts
+      trackerStatus: ts,
+      todayPct: todayPct,
+      completed: d.completed || {},
+      config: d.config || {}
     };
     saveFriend();
     renderFriends();
@@ -958,11 +974,13 @@ function renderFriends(){
 
   if(friendData && friendData.syllStats){
     const f = friendData;
+    const frToday = f.todayPct !== undefined ? f.todayPct : (friendData.todayPct || 0);
     document.getElementById('friendNameDisplay').textContent = f.name || 'Friend';
     document.getElementById('friendProgress').innerHTML =
       '<div class="friend-badge" style="font-size:10px;color:var(--success);margin:-4px 0 12px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block"></span> Live</div>' +
       '<div class="friend-stat"><div class="f-label">Syllabus Progress</div><div class="f-val">' + (f.syllStats.pct||0) + '%</div><div class="f-bar"><div class="f-bar-in" style="width:' + (f.syllStats.pct||0) + '%;background:var(--success)"></div></div></div>' +
       '<div class="friend-stat"><div class="f-label">Chapters Started</div><div class="f-val">' + (f.syllStats.started||0) + ' / ' + (f.syllStats.total||1) + '</div><div class="f-bar"><div class="f-bar-in" style="width:' + (f.syllStats.total>0?(f.syllStats.started||0)/f.syllStats.total*100:0) + '%;background:var(--accent)"></div></div></div>' +
+      '<div class="friend-stat"><div class="f-label">Today\'s Study</div><div class="f-val">' + frToday + '%</div><div class="f-bar"><div class="f-bar-in" style="width:' + frToday + '%;background:var(--warn)"></div></div></div>' +
       '<div class="friend-stat"><div class="f-label">Last updated</div><div class="f-val" style="font-size:14px;color:var(--text2)">' + (f.exportedAt||'Just now') + '</div></div>';
     document.getElementById('comparisonCard').style.display = 'block';
     renderComparison();
