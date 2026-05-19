@@ -324,6 +324,13 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       <button class="today-btn" onclick="goToday()">Today</button>
     </div>
 
+    <div class="syll-filter-bar" style="margin-bottom:14px">
+      <div class="syll-toggle-group" id="scheduleViewToggle">
+        <span class="syll-toggle-opt active" data-view="my" onclick="switchScheduleView('my')">&#x1F464; My Schedule</span>
+        <span class="syll-toggle-opt" data-view="friend" onclick="switchScheduleView('friend')">&#x1F465; <span id="friendSchedLabel">Friend's Schedule</span></span>
+      </div>
+    </div>
+
     <div class="perf-grid" id="perfGrid">
       <div class="perf-card">
         <div class="perf-label">Today's Progress</div>
@@ -541,7 +548,11 @@ function computeTodayPctFrom(config, completed){
 
 function watchFriendFb(code){
   if(friendFbListener){ friendFbListener.off(); friendFbListener = null; }
-  if(!code){ friendData = null; saveFriend(); renderFriends(); return; }
+  if(!code){
+    friendData = null; saveFriend(); renderFriends();
+    if(scheduleView === 'friend') switchScheduleView('my');
+    return;
+  }
   friendFbListener = fbDb.ref('users/' + code.toUpperCase());
   friendFbListener.on('value', snap => {
     const d = snap.val();
@@ -567,6 +578,10 @@ function watchFriendFb(code){
     };
     saveFriend();
     renderFriends();
+    if(scheduleView === 'friend' && friendData && friendData.config){
+      renderTimetable(friendData.config, friendData.completed);
+      renderPerformance(friendData.config, friendData.completed);
+    }
   });
 }
 
@@ -648,6 +663,7 @@ function getRotationForDay(dayIdx, numStudy){
 }
 
 // ===== STATE =====
+let scheduleView = 'my';
 let state = { weekOffset:0, editMode:false, config:defaultConfig(), completed:{}, syllabus:{}, calendar:{}, calOffset:0, syllTracker:{status:{},viewMode:'priority',classFilter:'both',targetMode:'main',openUnits:{}} };
 let friendData = null;
 let activeSubj = 'Physics';
@@ -678,43 +694,53 @@ function toggleEdit(){
 // ===== WEEK NAV =====
 function weekOffset(delta){ state.weekOffset += delta; refreshSchedule(); }
 function goToday(){ state.weekOffset = 0; refreshSchedule(); }
-function refreshSchedule(){ renderTimetable(); renderPerformance(); updateWeekLabel(); }
+function refreshSchedule(){
+  if(scheduleView === 'friend' && friendData && friendData.config){
+    renderTimetable(friendData.config, friendData.completed);
+    renderPerformance(friendData.config, friendData.completed);
+  } else {
+    renderTimetable();
+    renderPerformance();
+  }
+  updateWeekLabel();
+}
 function updateWeekLabel(){
   const days = getWeekDays(state.weekOffset);
   document.getElementById('weekLabel').textContent = fmtDayFull(days[0]) + ' - ' + fmtDayFull(days[6]);
 }
 
 // ===== TIMETABLE =====
-function renderTimetable(){
+function renderTimetable(cfg, cmpl){
+  const config = cfg || state.config;
+  const completed = cmpl || state.completed;
+  const isFriend = !!cfg;
   const days = getWeekDays(state.weekOffset);
   const container = document.getElementById('ttWrapper');
-  const slots = state.config.slots;
-  const napD = state.config.napDuration;
-  const sleepStart = state.config.sleepStart;
-  const sleepEnd = state.config.sleepEnd;
+  const slots = config.slots;
+  const napD = config.napDuration;
+  const sleepStart = config.sleepStart;
+  const sleepEnd = config.sleepEnd;
 
-  // Calculate total data columns: 7 day columns
   let html = '<div class="tt" style="grid-template-columns:80px repeat(7,1fr)">';
 
   // Header row
-  html += '<div class="tt-header"><div class="tt-cell">Time</div>';
+  html += '<div class="tt-header"><div class="tt-cell">' + (isFriend ? 'Time (Friend)' : 'Time') + '</div>';
   for(let d=0; d<7; d++){
     const cls = isToday(days[d]) ? ' style="color:var(--accent)"' : '';
     html += '<div class="tt-cell"' + cls + '>' + fmtDayFull(days[d]) + '</div>';
   }
   html += '</div>';
 
-  // Sleep row (at top)
-  html += '<div class="tt-row sleep-row"><div class="tt-cell" data-edit="sleep">' + sleepStart + '<br><span class="sleep-icon">&#x1F634;</span><br>' + sleepEnd + '</div>';
+  // Sleep row
+  html += '<div class="tt-row sleep-row"><div class="tt-cell">' + sleepStart + '<br><span class="sleep-icon">&#x1F634;</span><br>' + sleepEnd + '</div>';
   for(let d=0; d<7; d++) html += '<div class="tt-cell"><span class="sleep-icon">&#x1F634;</span> <span class="sleep-label">Sleep ' + sleepStart + '-' + sleepEnd + '</span></div>';
   html += '</div>';
 
-  // 4 study slot rows + nap rows between
+  // Study slot rows
   for(let s=0; s<slots.length; s++){
     const sl = slots[s] || {start:'06:00',end:'09:00'};
     const isRev = s === slots.length - 1;
 
-    // Check if this is a custom day override
     const daySubjects = [];
     for(let d=0; d<7; d++){
       const dateStr = fmtDate(days[d]);
@@ -723,30 +749,31 @@ function renderTimetable(){
         daySubjects.push('Revision');
       } else {
         const rot = getRotationForDay(d, slots.length - 1);
-        daySubjects.push(state.config[customKey] || rot[s] || 'Revision');
+        daySubjects.push(config[customKey] || rot[s] || 'Revision');
       }
     }
 
     html += '<div class="tt-row">';
-    html += '<div class="tt-cell" data-slot="' + s + '">' + sl.start + '<br>&#x2500;<br>' + sl.end + '<span class="time-edit-icon">&#x270E;</span></div>';
+    const timeLabel = isRev ? '&#x1F504; Revision' : (sl.start + '<br>&#x2500;<br>' + sl.end);
+    html += '<div class="tt-cell">' + timeLabel + '</div>';
     for(let d=0; d<7; d++){
       const dateStr = fmtDate(days[d]);
       const subj = daySubjects[d];
       const cls = subj === 'Revision' ? ' subj-revision bg-revision border-revision' : (subj === 'Free' ? ' subj-free bg-free border-free' : ' ' + SUBJ_CLASS(subj) + ' ' + SUBJ_BG(subj) + ' ' + SUBJ_BORDER(subj));
 
-      html += '<div class="tt-cell' + cls + '" data-date="' + dateStr + '" data-slot="' + s + '" data-subj="' + subj + '">';
+      html += '<div class="tt-cell' + cls + '">';
       html += '<div class="subj-name">' + (isRev ? '&#x1F504; Revision' : subj) + '</div>';
       html += '<div class="check-group">';
       if(!isRev && subj !== 'Free'){
         for(const item of ITEMS_SLOT){
           const key = dateStr + '_' + s + '_' + item;
-          const done = !!state.completed[key];
-          html += '<div class="check-item' + (done ? ' done' : '') + '" data-key="' + key + '" onclick="toggleCheck(this)"><span class="cb"></span>' + ITEMS_LABELS[item] + '</div>';
+          const done = !!completed[key];
+          html += '<div class="check-item' + (done ? ' done' : '') + '"><span class="cb"></span>' + ITEMS_LABELS[item] + '</div>';
         }
       } else if (isRev){
         const key = dateStr + '_' + s + '_R';
-        const done = !!state.completed[key];
-        html += '<div class="check-item' + (done ? ' done' : '') + '" data-key="' + key + '" onclick="toggleCheck(this)"><span class="cb"></span>Done</div>';
+        const done = !!completed[key];
+        html += '<div class="check-item' + (done ? ' done' : '') + '"><span class="cb"></span>Done</div>';
       } else {
         html += '<span class="text-xs">Free</span>';
       }
@@ -754,9 +781,8 @@ function renderTimetable(){
     }
     html += '</div>';
 
-    // Nap row after each study slot (not after revision)
     if(!isRev){
-      html += '<div class="tt-row sleep-row"><div class="tt-cell" data-edit="nap" style="font-size:10px;color:var(--warn);justify-content:center">&#x1F634; Nap<br>' + napD + 'min</div>';
+      html += '<div class="tt-row sleep-row"><div class="tt-cell" style="font-size:10px;color:var(--warn);justify-content:center">&#x1F634; Nap<br>' + napD + 'min</div>';
       for(let d=0; d<7; d++) html += '<div class="tt-cell" style="font-size:11px;color:var(--text2);text-align:center">&#x1F634; ' + napD + 'min nap</div>';
       html += '</div>';
     }
@@ -765,7 +791,6 @@ function renderTimetable(){
   html += '</div>';
   container.innerHTML = html;
 
-  // Mark nap indicators on time column cells (odd-indexed non-header rows)
   const rows = container.querySelectorAll('.tt-row');
   rows.forEach((row, idx) => {
     const firstCell = row.querySelector('.tt-cell:first-child');
@@ -785,26 +810,28 @@ function toggleCheck(el){
   renderPerformance();
 }
 
-function countSlots(){ return state.config.slots.length; }
-function isRevSlot(s){ return s === countSlots() - 1; }
+function countSlots(cfg){ return (cfg||state.config).slots.length; }
+function isRevSlot(s, cfg){ return s === countSlots(cfg) - 1; }
 
 // ===== PERFORMANCE =====
-function renderPerformance(){
+function renderPerformance(cfg, cmpl){
+  const config = cfg || state.config;
+  const completed = cmpl || state.completed;
   const days = getWeekDays(state.weekOffset);
   const today = new Date(); today.setHours(0,0,0,0);
   const todayStr = fmtDate(today);
 
   // Today's stats
   let tTotal = 0, tDone = 0;
-  const totalSlots = countSlots();
+  const totalSlots = countSlots(config);
   for(let s=0; s<totalSlots; s++){
-    if(isRevSlot(s)){
+    if(isRevSlot(s, config)){
       const k = todayStr + '_' + s + '_R'; tTotal++;
-      if(state.completed[k]) tDone++;
+      if(completed[k]) tDone++;
     } else {
       for(const item of ITEMS_SLOT){
         const k = todayStr + '_' + s + '_' + item; tTotal++;
-        if(state.completed[k]) tDone++;
+        if(completed[k]) tDone++;
       }
     }
   }
@@ -816,13 +843,13 @@ function renderPerformance(){
   // Weekly stats
   let wTotal = 0, wDone = 0;
   const dayPcts = [];
-  const tSlots = countSlots();
+  const tSlots = countSlots(config);
   for(let d=0; d<7; d++){
     const ds = fmtDate(days[d]);
     let dTot = 0, dDon = 0;
     for(let s=0; s<tSlots; s++){
-      if(isRevSlot(s)){ const k=ds+'_'+s+'_R'; dTot++; if(state.completed[k]) dDon++; }
-      else { for(const i of ITEMS_SLOT){ const k=ds+'_'+s+'_'+i; dTot++; if(state.completed[k]) dDon++; } }
+      if(isRevSlot(s, config)){ const k=ds+'_'+s+'_R'; dTot++; if(completed[k]) dDon++; }
+      else { for(const i of ITEMS_SLOT){ const k=ds+'_'+s+'_'+i; dTot++; if(completed[k]) dDon++; } }
     }
     wTotal += dTot; wDone += dDon;
     dayPcts.push(dTot > 0 ? Math.round(dDon/dTot*100) : 0);
@@ -839,6 +866,29 @@ function renderPerformance(){
     const isT = isToday(days[i]);
     return '<div class="day-bar"><div class="day-bar-inner" style="height:' + h + 'px;background:' + (isT?'var(--accent)':'var(--success)') + ';opacity:' + (isT?1:0.3+(p/100)*0.7) + '"></div><div class="day-bar-pct">' + p + '%</div><div class="day-bar-label">' + fmtDay(days[i]) + '</div></div>';
   }).join('');
+}
+
+function switchScheduleView(view){
+  scheduleView = view;
+  document.querySelectorAll('#scheduleViewToggle .syll-toggle-opt').forEach(el => el.classList.toggle('active', el.dataset.view === view));
+  const editToggle = document.getElementById('editToggle');
+  const editLabel = document.querySelector('.edit-toggle-label');
+  if(view === 'friend'){
+    state.editMode = false;
+    editToggle.classList.remove('on');
+    editToggle.style.display = 'none';
+    if(editLabel) editLabel.style.display = 'none';
+  } else {
+    editToggle.style.display = '';
+    if(editLabel) editLabel.style.display = '';
+  }
+  if(view === 'friend' && friendData && friendData.config){
+    renderTimetable(friendData.config, friendData.completed);
+    renderPerformance(friendData.config, friendData.completed);
+  } else {
+    renderTimetable();
+    renderPerformance();
+  }
 }
 
 // ===== SYLLABUS TRACKER =====
@@ -975,17 +1025,20 @@ function renderFriends(){
   if(friendData && friendData.syllStats){
     const f = friendData;
     const frToday = f.todayPct !== undefined ? f.todayPct : (friendData.todayPct || 0);
+    document.getElementById('friendSchedLabel').textContent = (f.name || 'Friend') + "'s Schedule";
     document.getElementById('friendNameDisplay').textContent = f.name || 'Friend';
     document.getElementById('friendProgress').innerHTML =
       '<div class="friend-badge" style="font-size:10px;color:var(--success);margin:-4px 0 12px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block"></span> Live</div>' +
       '<div class="friend-stat"><div class="f-label">Syllabus Progress</div><div class="f-val">' + (f.syllStats.pct||0) + '%</div><div class="f-bar"><div class="f-bar-in" style="width:' + (f.syllStats.pct||0) + '%;background:var(--success)"></div></div></div>' +
       '<div class="friend-stat"><div class="f-label">Chapters Started</div><div class="f-val">' + (f.syllStats.started||0) + ' / ' + (f.syllStats.total||1) + '</div><div class="f-bar"><div class="f-bar-in" style="width:' + (f.syllStats.total>0?(f.syllStats.started||0)/f.syllStats.total*100:0) + '%;background:var(--accent)"></div></div></div>' +
       '<div class="friend-stat"><div class="f-label">Today\'s Study</div><div class="f-val">' + frToday + '%</div><div class="f-bar"><div class="f-bar-in" style="width:' + frToday + '%;background:var(--warn)"></div></div></div>' +
-      '<div class="friend-stat"><div class="f-label">Last updated</div><div class="f-val" style="font-size:14px;color:var(--text2)">' + (f.exportedAt||'Just now') + '</div></div>';
+      '<div class="friend-stat"><div class="f-label">Last updated</div><div class="f-val" style="font-size:14px;color:var(--text2)">' + (f.exportedAt||'Just now') + '</div></div>' +
+      '<div style="margin-top:14px"><button class="btn-outline" onclick="switchScheduleView(\'friend\');switchTab(\'schedule\')" style="width:100%;font-size:11px">&#x1F4C5; View Friend\'s Schedule</button></div>';
     document.getElementById('comparisonCard').style.display = 'block';
     renderComparison();
   } else {
     document.getElementById('friendNameDisplay').textContent = 'Friend';
+    document.getElementById('friendSchedLabel').textContent = "Friend's Schedule";
     document.getElementById('friendProgress').innerHTML = '<div class="empty-state">Enter a friend\'s code above to watch their progress in real-time.</div>';
     document.getElementById('comparisonCard').style.display = 'none';
   }
@@ -1030,15 +1083,20 @@ function getSyllabusStats(){
   return { pct: allChs.length>0 ? Math.round(done/allChs.length*100) : 0, done, tot:allChs.length, started, total:allChs.length };
 }
 
-function getTodayCompletion(){
+function getTodayCompletion(cfg, cmpl){
+  const config = cfg || state.config;
+  const completed = cmpl || state.completed;
   const todayStr = fmtDate(new Date());
   let tot = 0, done = 0;
-  const tSlots = countSlots();
+  const tSlots = countSlots(config);
   for(let s=0; s<tSlots; s++){
-    if(isRevSlot(s)){ const k=todayStr+'_'+s+'_R'; tot++; if(state.completed[k]) done++; }
-    else { for(const i of ITEMS_SLOT){ const k=todayStr+'_'+s+'_'+i; tot++; if(state.completed[k]) done++; } }
+    if(isRevSlot(s, config)){ const k=todayStr+'_'+s+'_R'; tot++; if(completed[k]) done++; }
+    else { for(const i of ITEMS_SLOT){ const k=todayStr+'_'+s+'_'+i; tot++; if(completed[k]) done++; } }
   }
   return tot > 0 ? Math.round(done/tot*100) : 0;
+}
+function computeTodayPctFrom(config, completed){
+  return getTodayCompletion(config, completed);
 }
 
 function exportMyData(){
@@ -1183,6 +1241,19 @@ function resetAll(){
 }
 
 // ===== NAVIGATION =====
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + tab);
+  if(target) target.classList.add('active');
+  if(tab === 'syllabus') renderSyllabus();
+  if(tab === 'friends') renderFriends();
+  if(tab === 'schedule') refreshSchedule();
+  if(tab === 'calendar') renderCalendar();
+}
+
 document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
   btn.addEventListener('click', function(){
     document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.classList.remove('active'));
