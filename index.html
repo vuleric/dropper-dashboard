@@ -7,7 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-database-compat.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Orbitron:wght@400;600;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#08080f;--surface:#12121e;--card:#1a1a2e;--border:#2a1820;
@@ -45,13 +45,19 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 /* Performance */
 .perf-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
 @media(max-width:600px){.perf-grid{grid-template-columns:1fr}}
-.time-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;font-size:13px}
-.time-bar .tb-clock{font-family:monospace;font-size:22px;font-weight:700;color:var(--accent);letter-spacing:1px}
+.time-bar{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;font-size:13px}
+.clock-face{display:flex;align-items:center;gap:0;background:#0a0a0a;border-radius:10px;padding:6px 14px 6px 16px;border:2px solid #2a2a2a;box-shadow:inset 0 0 12px rgba(0,0,0,0.8),0 2px 8px rgba(0,0,0,0.3);position:relative}
+.clock-face::after{content:'';position:absolute;inset:0;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.03) 0%,transparent 50%,rgba(0,0,0,0.2) 100%);pointer-events:none}
+.clock-digits{font-family:'Orbitron',monospace;font-size:28px;font-weight:700;color:#ff4444;text-shadow:0 0 6px rgba(255,68,68,0.6),0 0 20px rgba(255,68,68,0.2);letter-spacing:2px;line-height:1;position:relative;z-index:1}
+.colon{animation:blink-colon 1s steps(1) infinite}
+@keyframes blink-colon{0%,100%{opacity:1}50%{opacity:0}}
+.clock-seconds{font-family:'Orbitron',monospace;font-size:16px;font-weight:600;color:#ff6666;text-shadow:0 0 4px rgba(255,68,68,0.4);margin-left:4px;opacity:0.8;line-height:1;position:relative;z-index:1}
 .time-bar .tb-sep{color:var(--border);font-size:18px}
 .time-bar .tb-activity{color:var(--text2);font-size:13px;flex:1}
-.time-bar .tb-alarm-btn{background:none;border:1px solid var(--border);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--text2)}
+.time-bar .tb-alarm-btn{background:none;border:1px solid var(--border);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--text2);transition:all 0.2s}
 .time-bar .tb-alarm-btn:hover{border-color:var(--accent);color:var(--accent)}
 .time-bar .tb-alarm-btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+@media(max-width:600px){.clock-digits{font-size:22px}.clock-seconds{font-size:13px}.clock-face{padding:4px 10px 4px 12px}.time-bar{gap:10px;padding:8px 12px}}
 .stopwatch-card{text-align:center;padding:16px;margin-bottom:14px}
 .stopwatch-card .sw-header{font-size:12px;color:var(--text2);margin-bottom:6px}
 .stopwatch-card .sw-display{font-family:monospace;font-size:36px;font-weight:700;color:var(--accent);letter-spacing:2px;margin-bottom:12px}
@@ -344,7 +350,10 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     </div>
 
     <div class="time-bar" id="timeBar">
-      <span class="tb-clock" id="liveClock">00:00:00</span>
+      <div class="clock-face">
+        <span class="clock-digits" id="liveClock">00<span class="colon">:</span>00</span>
+        <span class="clock-seconds" id="liveSeconds">00</span>
+      </div>
       <span class="tb-sep">|</span>
       <span class="tb-activity" id="currentActivity">--</span>
       <button class="tb-alarm-btn" id="alarmPermBtn" onclick="requestAlarmPermission()" title="Enable alarm notifications">&#x1F514;</button>
@@ -888,9 +897,15 @@ let alarmPermission = Notification.permission === 'granted';
 function startLiveClock(){
   setInterval(function(){
     const now = new Date();
-    document.getElementById('liveClock').textContent =
-      String(now.getHours()).padStart(2,'0') + ':' +
-      String(now.getMinutes()).padStart(2,'0') + ':' +
+    var clockEl = document.getElementById('liveClock');
+    var colonSpan = clockEl.querySelector('.colon');
+    if(colonSpan){
+      colonSpan.previousSibling.nodeValue = String(now.getHours()).padStart(2,'0');
+      colonSpan.nextSibling.nodeValue = String(now.getMinutes()).padStart(2,'0');
+    } else {
+      clockEl.textContent = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    }
+    document.getElementById('liveSeconds').textContent =
       String(now.getSeconds()).padStart(2,'0');
     updateCurrentActivity();
   }, 1000);
