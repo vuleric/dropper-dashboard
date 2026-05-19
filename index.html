@@ -225,7 +225,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 @media(max-width:800px){.cal-cell{min-height:72px;padding:5px}.cal-cell textarea{min-height:28px;font-size:10px}.cal-header{font-size:9px;padding:4px 2px}}
 
 /* Friends */
-.friends-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.friends-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:700px){.friends-grid{grid-template-columns:1fr}}
 .friend-card{background:var(--surface);border-radius:12px;padding:22px;border:1px solid var(--border);position:relative;overflow:hidden}
 .friend-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));opacity:0.4}
@@ -328,7 +328,6 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       <div class="syll-toggle-group" id="scheduleViewToggle">
         <span class="syll-toggle-opt active" data-view="my" onclick="switchScheduleView('my')">&#x1F464; My Schedule</span>
         <span class="syll-toggle-opt" data-view="friend" onclick="switchScheduleView('friend')">&#x1F465; <span id="friendSchedLabel">Friend's Schedule</span></span>
-        <span class="syll-toggle-opt" data-view="imported" onclick="switchScheduleView('imported')" id="importedSchedToggle" style="display:none">&#x1F4C2; <span id="importedSchedLabel">Imported Schedule</span></span>
       </div>
     </div>
 
@@ -421,12 +420,6 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
         <div id="friendProgress">
           <div class="empty-state" id="friendEmptyState">Enter a friend's code above to watch their progress in real-time.</div>
         </div>
-      </div>
-      <div class="friend-card" id="importedCard" style="display:none">
-        <h3>&#x1F4C2; <span id="importedNameDisplay">Imported</span></h3>
-        <div class="friend-badge" style="font-size:10px;color:var(--warn);margin:-8px 0 12px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--warn);display:inline-block"></span> Local file</div>
-        <div id="importedProgress"></div>
-        <button class="btn btn-outline" style="margin-top:12px;width:100%;font-size:11px" onclick="clearImportedSchedule()">&#x1F5D1; Clear Imported</button>
       </div>
     </div>
     <div class="card" id="comparisonCard" style="display:none">
@@ -619,27 +612,19 @@ function importSchedule(input){
   reader.onload = function(e){
     try {
       const data = JSON.parse(e.target.result);
-      importedSchedule = {
-        name: data.profileName || 'Imported',
-        config: data.config || {},
-        completed: data.completed || {},
-        exportedAt: data.exportedAt || new Date().toLocaleString(),
-        syllStats: {pct:0, done:0, tot:0, started:0, total:0},
-        todayPct: computeTodayPctFrom(data.config||{}, data.completed||{})
-      };
-      renderFriends();
-      if(scheduleView === 'imported') switchScheduleView('imported');
+      if(!data.config) throw new Error('No schedule data found in file');
+      if(!confirm('Replace your current schedule with the imported one? This will overwrite your timetable and checked items.')) return;
+      state.config = Object.assign(defaultConfig(), data.config);
+      state.completed = data.completed || {};
+      saveState();
+      if(scheduleView !== 'my') switchScheduleView('my');
+      renderAll();
     } catch(err){
-      alert('Invalid schedule file: ' + err.message);
+      alert('Import failed: ' + err.message);
     }
   };
   reader.readAsText(file);
   input.value = '';
-}
-function clearImportedSchedule(){
-  importedSchedule = null;
-  if(scheduleView === 'imported') switchScheduleView('my');
-  renderFriends();
 }
 
 // ===== DATA =====
@@ -723,7 +708,6 @@ function getRotationForDay(dayIdx, numStudy){
 let scheduleView = 'my';
 let state = { weekOffset:0, editMode:false, config:defaultConfig(), completed:{}, syllabus:{}, calendar:{}, calOffset:0, syllTracker:{status:{},viewMode:'priority',classFilter:'both',targetMode:'main',openUnits:{}} };
 let friendData = null;
-let importedSchedule = null;
 let activeSubj = 'Physics';
 let pickerEl = null;
 
@@ -756,9 +740,6 @@ function refreshSchedule(){
   if(scheduleView === 'friend' && friendData && friendData.config){
     renderTimetable(friendData.config, friendData.completed);
     renderPerformance(friendData.config, friendData.completed);
-  } else if(scheduleView === 'imported' && importedSchedule && importedSchedule.config){
-    renderTimetable(importedSchedule.config, importedSchedule.completed);
-    renderPerformance(importedSchedule.config, importedSchedule.completed);
   } else {
     renderTimetable();
     renderPerformance();
@@ -934,7 +915,7 @@ function switchScheduleView(view){
   document.querySelectorAll('#scheduleViewToggle .syll-toggle-opt').forEach(el => el.classList.toggle('active', el.dataset.view === view));
   const editToggle = document.getElementById('editToggle');
   const editLabel = document.querySelector('.edit-toggle-label');
-  if(view === 'friend' || view === 'imported'){
+  if(view === 'friend'){
     state.editMode = false;
     editToggle.classList.remove('on');
     editToggle.style.display = 'none';
@@ -946,9 +927,6 @@ function switchScheduleView(view){
   if(view === 'friend' && friendData && friendData.config){
     renderTimetable(friendData.config, friendData.completed);
     renderPerformance(friendData.config, friendData.completed);
-  } else if(view === 'imported' && importedSchedule && importedSchedule.config){
-    renderTimetable(importedSchedule.config, importedSchedule.completed);
-    renderPerformance(importedSchedule.config, importedSchedule.completed);
   } else {
     renderTimetable();
     renderPerformance();
@@ -1105,28 +1083,6 @@ function renderFriends(){
     document.getElementById('friendSchedLabel').textContent = "Friend's Schedule";
     document.getElementById('friendProgress').innerHTML = '<div class="empty-state">Enter a friend\'s code above to watch their progress in real-time.</div>';
     document.getElementById('comparisonCard').style.display = 'none';
-  }
-
-  // Imported schedule card
-  const importedCard = document.getElementById('importedCard');
-  const importedToggle = document.getElementById('importedSchedToggle');
-  if(importedSchedule){
-    importedCard.style.display = '';
-    importedToggle.style.display = '';
-    document.getElementById('importedNameDisplay').textContent = importedSchedule.name || 'Imported';
-    document.getElementById('importedSchedLabel').textContent = (importedSchedule.name || 'Imported') + "'s Schedule";
-    const is = importedSchedule;
-    const isToday = is.todayPct !== undefined ? is.todayPct : 0;
-    document.getElementById('importedProgress').innerHTML =
-      '<div class="friend-stat"><div class="f-label">Schedule</div><div class="f-val" style="font-size:14px;color:var(--text2)">' + ((is.config.slots||[]).length) + ' slots</div></div>' +
-      '<div class="friend-stat"><div class="f-label">Items Checked</div><div class="f-val" style="font-size:14px;color:var(--text2)">' + Object.keys(is.completed||{}).length + ' done</div></div>' +
-      '<div class="friend-stat"><div class="f-label">Today\'s Study</div><div class="f-val">' + isToday + '%</div><div class="f-bar"><div class="f-bar-in" style="width:' + isToday + '%;background:var(--warn)"></div></div></div>' +
-      '<div class="friend-stat"><div class="f-label">Imported</div><div class="f-val" style="font-size:14px;color:var(--text2)">' + (is.exportedAt||'Unknown') + '</div></div>' +
-      '<div style="margin-top:14px"><button class="btn-outline" onclick="switchScheduleView(\'imported\');switchTab(\'schedule\')" style="width:100%;font-size:11px">&#x1F4C5; View Imported Schedule</button></div>';
-  } else {
-    importedCard.style.display = 'none';
-    importedToggle.style.display = 'none';
-    if(scheduleView === 'imported') switchScheduleView('my');
   }
 }
 
