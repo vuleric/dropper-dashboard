@@ -390,6 +390,8 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       <span class="text-xs" style="color:var(--text2)">&#x1F511; Your Code:</span>
       <span style="font-weight:800;font-size:18px;letter-spacing:3px;color:var(--accent);font-family:monospace" id="myCodeDisplay">------</span>
       <button class="btn btn-outline" style="padding:4px 12px;font-size:11px" onclick="copyMyCode()">&#x1F4CB; Copy</button>
+      <span id="cloudStatus" style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px">&#x2601; connecting...</span>
+      <button class="btn btn-outline" style="padding:2px 8px;font-size:10px" onclick="forceSyncAll()" title="Force re-save all data to cloud">&#x1F504; Sync</button>
       <span style="flex:1"></span>
       <span class="text-xs" style="color:var(--text2)">&#x1F50D; Watch Friend:</span>
       <input type="text" id="friendCodeInput" placeholder="Enter friend code" maxlength="10" style="width:110px;padding:6px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:monospace;text-transform:uppercase;outline:none;letter-spacing:2px">
@@ -494,21 +496,24 @@ let fbListener = null;
 let friendFbListener = null;
 
 function saveStateToFb(){
+  remoteUpdateId++;
   fbDb.ref('users/' + MY_CODE).update({
     config: state.config,
     completed: state.completed,
     syllTracker: state.syllTracker,
     calendar: state.calendar,
     lastUpdated: firebase.database.ServerValue.TIMESTAMP,
-    updateId: ++remoteUpdateId,
+    updateId: remoteUpdateId,
     profileName: state.config.profileName || 'Me'
-  });
+  }).then(function(){ setCloudStatus(true); }).catch(function(e){ console.error('Firebase save failed for '+MY_CODE+':', e); setCloudStatus(false); });
 }
 
 function listenMyData(){
   if(fbListener) fbListener.off();
+  setCloudStatus(false);
   fbListener = fbDb.ref('users/' + MY_CODE);
   fbListener.on('value', snap => {
+    setCloudStatus(true);
     const d = snap.val();
     if(!d) return;
     if(d.updateId !== undefined && d.updateId <= remoteUpdateId) return;
@@ -528,7 +533,7 @@ function watchFriendFb(code){
   friendFbListener = fbDb.ref('users/' + code.toUpperCase());
   friendFbListener.on('value', snap => {
     const d = snap.val();
-    if(!d){ friendData = null; saveFriend(); renderFriends(); return; }
+    if(!d){ console.log('Friend data empty for', code); friendData = null; saveFriend(); renderFriends(); return; }
     const allChs = SUBJECTS.flatMap(s => getAllChapters(s));
     let done = 0, started = 0;
     const ts = d.syllTracker?.status || {};
@@ -635,13 +640,14 @@ let pickerEl = null;
 function loadState(){
   try {
     const raw = localStorage.getItem('jee_dropper_state');
-    if(raw){ const d=JSON.parse(raw); state.config={...defaultConfig(),...d.config}; state.completed=d.completed||{}; state.syllabus=d.syllabus||{}; state.calendar=d.calendar||{}; state.syllTracker=d.syllTracker||{status:{},viewMode:'priority',classFilter:'both',targetMode:'main',openUnits:{}}; }
+    if(raw){ const d=JSON.parse(raw); state.config={...defaultConfig(),...d.config}; state.completed=d.completed||{}; state.syllabus=d.syllabus||{}; state.calendar=d.calendar||{}; state.syllTracker=d.syllTracker||{status:{},viewMode:'priority',classFilter:'both',targetMode:'main',openUnits:{}}; remoteUpdateId=d.remoteUpdateId||0; }
   } catch(e){}
   try { const fr = localStorage.getItem('jee_dropper_friend'); if(fr) friendData = JSON.parse(fr); } catch(e){}
   try { const as = localStorage.getItem('jee_dropper_active_subj'); if(as) activeSubj = as; } catch(e){}
 }
-function saveStateLocal(){ localStorage.setItem('jee_dropper_state', JSON.stringify({config:state.config,completed:state.completed,syllabus:state.syllabus,calendar:state.calendar,syllTracker:state.syllTracker})); }
+function saveStateLocal(){ localStorage.setItem('jee_dropper_state', JSON.stringify({config:state.config,completed:state.completed,syllabus:state.syllabus,calendar:state.calendar,syllTracker:state.syllTracker,remoteUpdateId:remoteUpdateId})); }
 function saveState(){ saveStateLocal(); saveStateToFb(); }
+function setCloudStatus(ok){ var el=document.getElementById('cloudStatus'); if(el) el.innerHTML=ok?'&#x2601; <span style="color:var(--success)">saved</span>':'&#x2601; <span style="color:var(--err)">offline</span>'; }
 function saveFriend(){ localStorage.setItem('jee_dropper_friend', friendData ? JSON.stringify(friendData) : ''); }
 function saveActiveSubj(){ localStorage.setItem('jee_dropper_active_subj', activeSubj); }
 
@@ -990,6 +996,9 @@ function stopWatching(){
 }
 
 function clearFriendData(){ stopWatching(); }
+function forceSyncAll(){ setCloudStatus(false); saveStateToFb(); }
+function checkFirebaseData(){ fbDb.ref('users/'+MY_CODE).once('value').then(function(s){ console.log('My Firebase data:', s.val()); }); }
+function checkFriendFirebaseData(code){ fbDb.ref('users/'+(code||'').toUpperCase()).once('value').then(function(s){ console.log('Friend Firebase data:', s.val()); }); }
 
 function getSyllabusStats(){
   let allChs = [];
