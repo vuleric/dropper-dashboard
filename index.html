@@ -732,7 +732,7 @@ function renderTimetable(cfg, cmpl){
   html += '</div>';
 
   // Sleep row
-  html += '<div class="tt-row sleep-row"><div class="tt-cell">' + sleepStart + '<br><span class="sleep-icon">&#x1F634;</span><br>' + sleepEnd + '</div>';
+  html += '<div class="tt-row sleep-row"><div class="tt-cell' + (isFriend?'':' data-edit="sleep"') + '">' + sleepStart + '<br><span class="sleep-icon">&#x1F634;</span><br>' + sleepEnd + '</div>';
   for(let d=0; d<7; d++) html += '<div class="tt-cell"><span class="sleep-icon">&#x1F634;</span> <span class="sleep-label">Sleep ' + sleepStart + '-' + sleepEnd + '</span></div>';
   html += '</div>';
 
@@ -755,13 +755,13 @@ function renderTimetable(cfg, cmpl){
 
     html += '<div class="tt-row">';
     const timeLabel = isRev ? '&#x1F504; Revision' : (sl.start + '<br>&#x2500;<br>' + sl.end);
-    html += '<div class="tt-cell">' + timeLabel + '</div>';
+    html += '<div class="tt-cell"' + (isFriend?'':' data-slot="' + s + '"') + '>' + timeLabel + (isFriend?'':'<span class="time-edit-icon">&#x270E;</span>') + '</div>';
     for(let d=0; d<7; d++){
       const dateStr = fmtDate(days[d]);
       const subj = daySubjects[d];
       const cls = subj === 'Revision' ? ' subj-revision bg-revision border-revision' : (subj === 'Free' ? ' subj-free bg-free border-free' : ' ' + SUBJ_CLASS(subj) + ' ' + SUBJ_BG(subj) + ' ' + SUBJ_BORDER(subj));
 
-      html += '<div class="tt-cell' + cls + '">';
+      html += '<div class="tt-cell' + cls + '"' + (isFriend?'':' data-date="' + dateStr + '" data-slot="' + s + '" data-subj="' + subj + '"') + '>';
       html += '<div class="subj-name">' + (isRev ? '&#x1F504; Revision' : subj) + '</div>';
       html += '<div class="check-group">';
       if(!isRev && subj !== 'Free'){
@@ -782,7 +782,7 @@ function renderTimetable(cfg, cmpl){
     html += '</div>';
 
     if(!isRev){
-      html += '<div class="tt-row sleep-row"><div class="tt-cell" style="font-size:10px;color:var(--warn);justify-content:center">&#x1F634; Nap<br>' + napD + 'min</div>';
+      html += '<div class="tt-row sleep-row"><div class="tt-cell' + (isFriend?'':' data-edit="nap"') + '" style="font-size:10px;color:var(--warn);justify-content:center">&#x1F634; Nap<br>' + napD + 'min</div>';
       for(let d=0; d<7; d++) html += '<div class="tt-cell" style="font-size:11px;color:var(--text2);text-align:center">&#x1F634; ' + napD + 'min nap</div>';
       html += '</div>';
     }
