@@ -768,12 +768,12 @@ function renderTimetable(cfg, cmpl){
         for(const item of ITEMS_SLOT){
           const key = dateStr + '_' + s + '_' + item;
           const done = !!completed[key];
-          html += '<div class="check-item' + (done ? ' done' : '') + '"><span class="cb"></span>' + ITEMS_LABELS[item] + '</div>';
+          html += '<div class="check-item' + (done ? ' done' : '') + '"' + (isFriend?'':' data-key="' + key + '" onclick="toggleCheck(this)"') + '><span class="cb"></span>' + ITEMS_LABELS[item] + '</div>';
         }
       } else if (isRev){
         const key = dateStr + '_' + s + '_R';
         const done = !!completed[key];
-        html += '<div class="check-item' + (done ? ' done' : '') + '"><span class="cb"></span>Done</div>';
+        html += '<div class="check-item' + (done ? ' done' : '') + '"' + (isFriend?'':' data-key="' + key + '" onclick="toggleCheck(this)"') + '><span class="cb"></span>Done</div>';
       } else {
         html += '<span class="text-xs">Free</span>';
       }
